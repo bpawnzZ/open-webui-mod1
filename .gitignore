@@ -308,3 +308,9 @@ cypress/videos
 cypress/screenshots
 .vscode/settings.json
 .aider*
+
+# Ignore override files
+docker-compose.override.yml
+
+# Ignore custom Dockerfiles
+Dockerfile.tailscale

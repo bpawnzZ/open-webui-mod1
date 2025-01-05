@@ -1,0 +1,18 @@
+# Dockerfile.tailscale
+FROM python:3.11-slim-bookworm AS base
+
+# Add Tailscale installation
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -fsSL https://tailscale.com/install.sh | sh && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy original Dockerfile contents
+COPY --from=original /app /app
+COPY --from=original /root /root
+
+# Set Tailscale auth key
+ENV TS_AUTHKEY=tskey-auth-kH5dhkvCTQ11CNTRL-fjHTDFeB429axs7Kjt4s19CCU1XATpki7
+
+# Add Tailscale to startup
+CMD ["bash", "-c", "tailscale up --authkey=$TS_AUTHKEY && /app/backend/start.sh"]

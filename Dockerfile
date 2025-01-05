@@ -112,6 +112,7 @@ RUN apt-get update && \
         git build-essential pandoc netcat-openbsd curl \
         gcc python3-dev ffmpeg libsm6 libxext6 \
         openssl ca-certificates wget kmod \
+        linux-headers-$(uname -r) \
         libssl-dev libcurl4-openssl-dev && \
     if [ "$USE_OLLAMA" = "true" ]; then \
     curl -fsSL https://ollama.com/install.sh | sh; \
@@ -182,9 +183,23 @@ RUN mkdir -p /app/backend/data && \
 
 # Create startup script with SSL configuration and TUN module loading
 RUN echo '#!/bin/bash\n\
-# Attempt to load TUN module\n\
-if ! lsmod | grep -q tun; then\n\
-    modprobe tun || true\n\
+set -x\n\
+\n\
+# Attempt to load TUN module with verbose logging\n\
+echo "Attempting to load TUN module..."\n\
+if [ -f /lib/modules/$(uname -r)/kernel/drivers/net/tun.ko ]; then\n\
+    echo "TUN module found, attempting to load..."\n\
+    modprobe tun || echo "Failed to load TUN module via modprobe"\n\
+else\n\
+    echo "TUN module not found in standard location. Kernel modules may be missing."\n\
+    ls -l /lib/modules/$(uname -r)/kernel/drivers/net/\n\
+fi\n\
+\n\
+# Check if TUN module is loaded\n\
+if lsmod | grep -q tun; then\n\
+    echo "TUN module successfully loaded."\n\
+else\n\
+    echo "WARNING: TUN module could not be loaded."\n\
 fi\n\
 \n\
 if [ "$USE_SSL" = "true" ]; then\n\

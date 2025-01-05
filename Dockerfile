@@ -112,7 +112,7 @@ RUN apt-get update && \
         git build-essential pandoc netcat-openbsd curl \
         gcc python3-dev ffmpeg libsm6 libxext6 \
         openssl ca-certificates wget kmod \
-        linux-headers-$(uname -r) \
+        linux-headers-generic \
         libssl-dev libcurl4-openssl-dev && \
     if [ "$USE_OLLAMA" = "true" ]; then \
     curl -fsSL https://ollama.com/install.sh | sh; \

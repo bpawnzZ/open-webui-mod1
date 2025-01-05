@@ -164,7 +164,7 @@ RUN python3 -m pip install --no-cache-dir \
     python3 -c "import tiktoken; print(tiktoken.__version__)"
 
 # Install requirements using uv
-RUN uv pip install --system -r requirements.txt --no-cache-dir && \
+RUN uv pip install --system -r backend/requirements.txt --no-cache-dir && \
     python3 -c "import pkg_resources; print([pkg.key for pkg in pkg_resources.working_set])"
 
 # Verification steps

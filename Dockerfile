@@ -45,6 +45,12 @@ ARG USE_RERANKING_MODEL
 ARG UID
 ARG GID
 
+## SSL Config ##
+ENV SSL_CERT_PATH="/app/backend/ssl/cert.pem" \
+    SSL_KEY_PATH="/app/backend/ssl/key.pem" \
+    USE_SSL="false" \
+    SSL_PORT=8443
+
 ## Basis ##
 ENV ENV=prod \
     PORT=8080 \
@@ -83,11 +89,6 @@ ENV TIKTOKEN_ENCODING_NAME="cl100k_base" \
 ## Hugging Face download cache ##
 ENV HF_HOME="/app/backend/data/cache/embedding/models"
 
-## Torch Extensions ##
-# ENV TORCH_EXTENSIONS_DIR="/.cache/torch_extensions"
-
-#### Other models ##########################################################
-
 WORKDIR /app/backend
 
 ENV HOME=/root
@@ -105,55 +106,87 @@ RUN echo -n 00000000-0000-0000-0000-000000000000 > $HOME/.cache/chroma/telemetry
 # Make sure the user has access to the app and root directory
 RUN chown -R $UID:$GID /app $HOME
 
-RUN if [ "$USE_OLLAMA" = "true" ]; then \
-    apt-get update && \
-    # Install pandoc and netcat
-    apt-get install -y --no-install-recommends git build-essential pandoc netcat-openbsd curl && \
-    apt-get install -y --no-install-recommends gcc python3-dev && \
-    # for RAG OCR
-    apt-get install -y --no-install-recommends ffmpeg libsm6 libxext6 && \
-    # install helper tools
-    apt-get install -y --no-install-recommends curl jq && \
-    # install ollama
-    curl -fsSL https://ollama.com/install.sh | sh && \
-    # cleanup
-    rm -rf /var/lib/apt/lists/*; \
+# Install SSL and other dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git build-essential pandoc netcat-openbsd curl \
+        gcc python3-dev ffmpeg libsm6 libxext6 \
+        openssl ca-certificates wget \
+        libssl-dev libcurl4-openssl-dev && \
+    if [ "$USE_OLLAMA" = "true" ]; then \
+    curl -fsSL https://ollama.com/install.sh | sh; \
+    fi && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Tailscale
+RUN curl -fsSL https://pkgs.tailscale.com/stable/debian/bullseye.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null && \
+    curl -fsSL https://pkgs.tailscale.com/stable/debian/bullseye.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list && \
+    apt-get update && apt-get install -y tailscale && \
+    rm -rf /var/lib/apt/lists/*
+
+# Update CA certificates
+RUN update-ca-certificates
+
+# SSL Certificate Generation
+RUN mkdir -p /app/backend/ssl && \
+    openssl req -x509 -newkey rsa:4096 -keyout /app/backend/ssl/key.pem -out /app/backend/ssl/cert.pem \
+    -days 365 -nodes -subj "/CN=localhost" \
+    -addext "subjectAltName = DNS:localhost,IP:127.0.0.1" && \
+    chmod 600 /app/backend/ssl/key.pem && \
+    chmod 644 /app/backend/ssl/cert.pem && \
+    chown -R $UID:$GID /app/backend/ssl
+
+# Clean pip cache and install pip
+RUN python3 -m pip cache purge && \
+    python3 -m pip install --upgrade "pip==23.3.2" && \
+    python3 -m pip --version
+
+# Install uv
+RUN python3 -m pip install "uv==0.1.13" && \
+    uv --version
+
+# Install torch based on CUDA configuration
+RUN if [ "$USE_CUDA" = "true" ]; then \
+    python3 -m pip install torch torchvision torchaudio \
+        --index-url https://download.pytorch.org/whl/$USE_CUDA_DOCKER_VER --no-cache-dir && \
+    python3 -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"; \
     else \
-    apt-get update && \
-    # Install pandoc, netcat and gcc
-    apt-get install -y --no-install-recommends git build-essential pandoc gcc netcat-openbsd curl jq && \
-    apt-get install -y --no-install-recommends gcc python3-dev && \
-    # for RAG OCR
-    apt-get install -y --no-install-recommends ffmpeg libsm6 libxext6 && \
-    # cleanup
-    rm -rf /var/lib/apt/lists/*; \
+    python3 -m pip install torch torchvision torchaudio \
+        --index-url https://download.pytorch.org/whl/cpu --no-cache-dir && \
+    python3 -c "import torch; print(torch.__version__)"; \
     fi
 
-# install python dependencies
-COPY --chown=$UID:$GID ./backend/requirements.txt ./requirements.txt
+# Install core dependencies
+RUN python3 -m pip install --no-cache-dir \
+    tiktoken \
+    certifi \
+    requests[security] && \
+    python3 -c "import tiktoken; print(tiktoken.__version__)"
 
-RUN pip3 install uv && \
-    if [ "$USE_CUDA" = "true" ]; then \
-    # If you use CUDA the whisper and embedding model will be downloaded on first use
-    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/$USE_CUDA_DOCKER_VER --no-cache-dir && \
-    uv pip install --system -r requirements.txt --no-cache-dir && \
-    python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
-    python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])"; \
-    python -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])"; \
-    else \
-    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --no-cache-dir && \
-    uv pip install --system -r requirements.txt --no-cache-dir && \
-    python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
-    python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])"; \
-    python -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])"; \
-    fi; \
-    chown -R $UID:$GID /app/backend/data/
+# Install requirements using uv
+RUN uv pip install --system -r requirements.txt --no-cache-dir && \
+    python3 -c "import pkg_resources; print([pkg.key for pkg in pkg_resources.working_set])"
 
+# Verification steps
+RUN python3 -c "import ssl; print(ssl.get_default_verify_paths())" && \
+    python3 -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')" && \
+    python3 -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])" && \
+    python3 -c "import os; import tiktoken; tiktoken.get_encoding(os.environ['TIKTOKEN_ENCODING_NAME'])"
 
+# Set proper permissions
+RUN mkdir -p /app/backend/data && \
+    chown -R $UID:$GID /app/backend/data
 
-# copy embedding weight from build
-# RUN mkdir -p /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2
-# COPY --from=build /app/onnx /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx
+# Create startup script with SSL configuration
+RUN echo '#!/bin/bash\n\
+if [ "$USE_SSL" = "true" ]; then\n\
+    echo "Starting server with SSL on port $SSL_PORT"\n\
+    exec python3 -m uvicorn main:app --host 0.0.0.0 --port $SSL_PORT --ssl-keyfile=$SSL_KEY_PATH --ssl-certfile=$SSL_CERT_PATH\n\
+else\n\
+    echo "Starting server without SSL on port $PORT"\n\
+    exec python3 -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}\n\
+fi' > /app/backend/start-with-ssl.sh && \
+    chmod +x /app/backend/start-with-ssl.sh
 
 # copy built frontend files
 COPY --chown=$UID:$GID --from=build /app/build /app/build
@@ -164,6 +197,7 @@ COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
 COPY --chown=$UID:$GID ./backend .
 
 EXPOSE 8080
+EXPOSE 8443
 
 HEALTHCHECK CMD curl --silent --fail http://localhost:${PORT:-8080}/health | jq -ne 'input.status == true' || exit 1
 
@@ -173,4 +207,4 @@ ARG BUILD_HASH
 ENV WEBUI_BUILD_VERSION=${BUILD_HASH}
 ENV DOCKER=true
 
-CMD [ "bash", "start.sh"]
+CMD [ "bash", "start-with-ssl.sh"]

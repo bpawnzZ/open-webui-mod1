@@ -111,7 +111,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         git build-essential pandoc netcat-openbsd curl \
         gcc python3-dev ffmpeg libsm6 libxext6 \
-        openssl ca-certificates wget \
+        openssl ca-certificates wget kmod \
         libssl-dev libcurl4-openssl-dev && \
     if [ "$USE_OLLAMA" = "true" ]; then \
     curl -fsSL https://ollama.com/install.sh | sh; \
@@ -180,8 +180,13 @@ RUN python3 -c "import ssl; print(ssl.get_default_verify_paths())" && \
 RUN mkdir -p /app/backend/data && \
     chown -R $UID:$GID /app/backend/data
 
-# Create startup script with SSL configuration
+# Create startup script with SSL configuration and TUN module loading
 RUN echo '#!/bin/bash\n\
+# Attempt to load TUN module\n\
+if ! lsmod | grep -q tun; then\n\
+    modprobe tun || true\n\
+fi\n\
+\n\
 if [ "$USE_SSL" = "true" ]; then\n\
     echo "Starting server with SSL on port $SSL_PORT"\n\
     exec python3 -m uvicorn main:app --host 0.0.0.0 --port $SSL_PORT --ssl-keyfile=$SSL_KEY_PATH --ssl-certfile=$SSL_CERT_PATH\n\

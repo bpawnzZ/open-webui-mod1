@@ -141,9 +141,10 @@ RUN python3 -m pip cache purge && \
     python3 -m pip install --upgrade "pip==23.3.2" && \
     python3 -m pip --version
 
-# Install uv
+# Install uv and verify installation
 RUN python3 -m pip install "uv==0.1.13" && \
-    uv --version
+    /root/.local/bin/uv --version && \
+				ln -s /root/.local/bin/uv /usr/local/bin/uv
 
 # Install torch based on CUDA configuration
 RUN if [ "$USE_CUDA" = "true" ]; then \

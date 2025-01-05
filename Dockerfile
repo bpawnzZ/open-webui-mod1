@@ -163,6 +163,9 @@ RUN python3 -m pip install --no-cache-dir \
     requests[security] && \
     python3 -c "import tiktoken; print(tiktoken.__version__)"
 
+# Copy backend requirements first
+COPY backend/requirements.txt ./backend/requirements.txt
+
 # Install requirements using uv
 RUN uv pip install --system -r backend/requirements.txt --no-cache-dir && \
     python3 -c "import pkg_resources; print([pkg.key for pkg in pkg_resources.working_set])"

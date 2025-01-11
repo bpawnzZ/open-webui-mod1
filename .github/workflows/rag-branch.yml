@@ -28,10 +28,10 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:rag-${{ github.sha }}
-            ghcr.io/${{ github.repository }}:rag-latest
+            ghcr.io/bpawnzz/open-webui-mod1:rag-${{ github.sha }}
+            ghcr.io/bpawnzz/open-webui-mod1:rag-latest
           build-args: |
-            REPOSITORY_NAME=${{ github.repository }}
+            REPOSITORY_NAME=bpawnzz/open-webui-mod1
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

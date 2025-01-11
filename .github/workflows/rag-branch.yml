@@ -28,8 +28,10 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository | lower }}:rag-${{ github.sha }}
-            ghcr.io/${{ github.repository | lower }}:rag-latest
+            ghcr.io/${{ github.repository }}:rag-${{ github.sha }}
+            ghcr.io/${{ github.repository }}:rag-latest
+          build-args: |
+            REPOSITORY_NAME=${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

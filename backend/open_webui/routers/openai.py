@@ -536,6 +536,13 @@ async def generate_chat_completion(
     if BYPASS_MODEL_ACCESS_CONTROL:
         bypass_filter = True
 
+    # Validate input messages
+    if not form_data.get("messages") or not isinstance(form_data["messages"], list):
+        raise HTTPException(
+            status_code=400,
+            detail="Messages must be a non-empty array",
+        )
+
     idx = 0
     payload = {**form_data}
     if "metadata" in payload:
@@ -543,6 +550,13 @@ async def generate_chat_completion(
 
     model_id = form_data.get("model")
     model_info = Models.get_model_by_id(model_id)
+    
+    # Validate model info exists
+    if not model_info and not bypass_filter and user.role != "admin":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model {model_id} not found",
+        )
 
     # Check model info and override the payload
     if model_info:
@@ -656,6 +670,19 @@ async def generate_chat_completion(
                 ),
             },
         )
+
+        # Validate response structure for RAG models
+        if isinstance(response, dict) and "choices" in response:
+            if not response["choices"] or not isinstance(response["choices"], list):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Invalid response format from model",
+                )
+            if not response["choices"][0].get("message"):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Invalid message format in response",
+                )
 
         # Check if response is SSE
         if "text/event-stream" in r.headers.get("Content-Type", ""):

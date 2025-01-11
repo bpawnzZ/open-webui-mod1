@@ -146,15 +146,26 @@ class ModelsTable:
     def insert_new_model(
         self, form_data: ModelForm, user_id: str
     ) -> Optional[ModelModel]:
-        model = ModelModel(
-            **{
-                **form_data.model_dump(),
-                "user_id": user_id,
-                "created_at": int(time.time()),
-                "updated_at": int(time.time()),
-            }
-        )
+        # Validate required fields
+        if not form_data.id or not form_data.name or not user_id:
+            log.error("Missing required fields for new model")
+            return None
+            
         try:
+            model = ModelModel(
+                **{
+                    **form_data.model_dump(),
+                    "user_id": user_id,
+                    "created_at": int(time.time()),
+                    "updated_at": int(time.time()),
+                }
+            )
+            
+            # Validate model structure
+            if not all(hasattr(model, attr) for attr in ['id', 'user_id', 'name', 'params', 'meta']):
+                log.error("Invalid model structure in insert_new_model")
+                return None
+                
             with get_db() as db:
                 result = Model(**model.model_dump())
                 db.add(result)
@@ -163,10 +174,9 @@ class ModelsTable:
 
                 if result:
                     return ModelModel.model_validate(result)
-                else:
-                    return None
+                return None
         except Exception as e:
-            print(e)
+            log.error(f"Error inserting new model: {str(e)}")
             return None
 
     def get_all_models(self) -> list[ModelModel]:
@@ -207,11 +217,23 @@ class ModelsTable:
         ]
 
     def get_model_by_id(self, id: str) -> Optional[ModelModel]:
+        if not id:
+            return None
+            
         try:
             with get_db() as db:
                 model = db.get(Model, id)
+                if not model:
+                    return None
+                    
+                # Validate model structure
+                if not all(hasattr(model, attr) for attr in ['id', 'user_id', 'name', 'params', 'meta']):
+                    log.error(f"Invalid model structure for model {id}")
+                    return None
+                    
                 return ModelModel.model_validate(model)
-        except Exception:
+        except Exception as e:
+            log.error(f"Error getting model {id}: {str(e)}")
             return None
 
     def toggle_model_by_id(self, id: str) -> Optional[ModelModel]:

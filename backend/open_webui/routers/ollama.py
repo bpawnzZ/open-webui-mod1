@@ -951,6 +951,13 @@ async def generate_chat_completion(
     if BYPASS_MODEL_ACCESS_CONTROL:
         bypass_filter = True
 
+    # Validate input messages
+    if not form_data.get("messages") or not isinstance(form_data["messages"], list):
+        raise HTTPException(
+            status_code=400,
+            detail="Messages must be a non-empty array",
+        )
+
     try:
         form_data = GenerateChatCompletionForm(**form_data)
     except Exception as e:
@@ -966,6 +973,13 @@ async def generate_chat_completion(
 
     model_id = payload["model"]
     model_info = Models.get_model_by_id(model_id)
+    
+    # Validate model info exists
+    if not model_info and not bypass_filter and user.role != "admin":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model {model_id} not found",
+        )
 
     if model_info:
         if model_info.base_model_id:
@@ -1011,13 +1025,37 @@ async def generate_chat_completion(
     if prefix_id:
         payload["model"] = payload["model"].replace(f"{prefix_id}.", "")
 
-    return await send_post_request(
-        url=f"{url}/api/chat",
-        payload=json.dumps(payload),
-        stream=form_data.stream,
-        key=get_api_key(url, request.app.state.config.OLLAMA_API_CONFIGS),
-        content_type="application/x-ndjson",
-    )
+    try:
+        response = await send_post_request(
+            url=f"{url}/api/chat",
+            payload=json.dumps(payload),
+            stream=form_data.stream,
+            key=get_api_key(url, request.app.state.config.OLLAMA_API_CONFIGS),
+            content_type="application/x-ndjson",
+        )
+        
+        # Validate response structure for RAG models
+        if isinstance(response, dict) and "choices" in response:
+            if not response["choices"] or not isinstance(response["choices"], list):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Invalid response format from model",
+                )
+            if not response["choices"][0].get("message"):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Invalid message format in response",
+                )
+        
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception(f"Error processing chat completion: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing chat completion: {str(e)}",
+        )
 
 
 # TODO: we should update this part once Ollama supports other types

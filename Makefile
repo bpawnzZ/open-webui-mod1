@@ -14,8 +14,11 @@ remove:
 
 start:
 	$(DOCKER_COMPOSE) start
-startAndBuild: 
+startAndBuild:
 	$(DOCKER_COMPOSE) up -d --build
+
+startAndBuildRag:
+	$(DOCKER_COMPOSE) up -d --build open-webui-rag
 
 stop:
 	$(DOCKER_COMPOSE) stop

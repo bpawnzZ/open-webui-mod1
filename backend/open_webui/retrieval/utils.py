@@ -63,6 +63,10 @@ def query_doc(
     query_embedding: list[float],
     k: int,
 ):
+    if not collection_name or not query_embedding or k <= 0:
+        log.error("Invalid parameters for query_doc")
+        return None
+        
     try:
         result = VECTOR_DB_CLIENT.search(
             collection_name=collection_name,
@@ -70,13 +74,16 @@ def query_doc(
             limit=k,
         )
 
-        if result:
-            log.info(f"query_doc:result {result.ids} {result.metadatas}")
+        # Validate result structure
+        if not result or not hasattr(result, 'ids') or not hasattr(result, 'metadatas'):
+            log.error("Invalid result structure from vector DB")
+            return None
 
+        log.info(f"query_doc:result {result.ids} {result.metadatas}")
         return result
     except Exception as e:
-        print(e)
-        raise e
+        log.error(f"Error querying document: {str(e)}")
+        return None
 
 
 def query_doc_with_hybrid_search(
@@ -458,26 +465,37 @@ def generate_ollama_batch_embeddings(
 
 
 def generate_embeddings(engine: str, model: str, text: Union[str, list[str]], **kwargs):
+    if not engine or not model or not text:
+        log.error("Missing required parameters for generate_embeddings")
+        return None
+        
     url = kwargs.get("url", "")
     key = kwargs.get("key", "")
 
-    if engine == "ollama":
-        if isinstance(text, list):
-            embeddings = generate_ollama_batch_embeddings(
-                **{"model": model, "texts": text, "url": url, "key": key}
-            )
-        else:
-            embeddings = generate_ollama_batch_embeddings(
-                **{"model": model, "texts": [text], "url": url, "key": key}
-            )
-        return embeddings[0] if isinstance(text, str) else embeddings
-    elif engine == "openai":
-        if isinstance(text, list):
-            embeddings = generate_openai_batch_embeddings(model, text, url, key)
-        else:
-            embeddings = generate_openai_batch_embeddings(model, [text], url, key)
+    try:
+        if engine == "ollama":
+            if isinstance(text, list):
+                embeddings = generate_ollama_batch_embeddings(
+                    **{"model": model, "texts": text, "url": url, "key": key}
+                )
+            else:
+                embeddings = generate_ollama_batch_embeddings(
+                    **{"model": model, "texts": [text], "url": url, "key": key}
+                )
+            return embeddings[0] if isinstance(text, str) and embeddings else embeddings
+        elif engine == "openai":
+            if isinstance(text, list):
+                embeddings = generate_openai_batch_embeddings(model, text, url, key)
+            else:
+                embeddings = generate_openai_batch_embeddings(model, [text], url, key)
 
-        return embeddings[0] if isinstance(text, str) else embeddings
+            return embeddings[0] if isinstance(text, str) and embeddings else embeddings
+        else:
+            log.error(f"Unsupported embedding engine: {engine}")
+            return None
+    except Exception as e:
+        log.error(f"Error generating embeddings: {str(e)}")
+        return None
 
 
 import operator

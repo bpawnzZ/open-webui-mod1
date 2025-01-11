@@ -29,6 +29,28 @@ services:
       - host.docker.internal:host-gateway
     restart: unless-stopped
 
+  open-webui-rag:
+    build:
+      context: .
+      args:
+        OLLAMA_BASE_URL: '/ollama'
+        WEBUI_BRANCH: 'rag'
+      dockerfile: Dockerfile
+    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-rag}
+    container_name: open-webui-rag
+    volumes:
+      - open-webui-rag:/app/backend/data
+    depends_on:
+      - ollama
+    ports:
+      - ${OPEN_WEBUI_RAG_PORT-3001}:8080
+    environment:
+      - 'OLLAMA_BASE_URL=http://ollama:11434'
+      - 'WEBUI_SECRET_KEY='
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    restart: unless-stopped
+
 volumes:
   ollama: {}
   open-webui: {}
